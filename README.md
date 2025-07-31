@@ -157,6 +157,35 @@ The library automatically detects your environment and logs which interceptors a
 [otel-nextjs] Enhanced undici instrumentation enabled successfully
 ```
 
+## Environment Variables
+
+The SDK supports several environment variables for configuration:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `OTEL_SERVICE_NAME` | Sets the service name for all telemetry data | `nextjs-app` |
+| `KUBIKS_API_KEY` | API key for Kubiks (can also use `KUBIKS_KEY`) | - |
+| `COLLECTOR_URL` | Custom OTLP collector URL | `https://otlp.kubiks.ai` |
+| `OTEL_LOG_LEVEL` | Enable debug logging when set to `debug` | - |
+| `NEXT_RUNTIME` | Detected automatically by Next.js | - |
+
+### Service Name Configuration
+
+You can set the service name in multiple ways (in order of precedence):
+
+```javascript
+// 1. Explicit service parameter (highest priority)
+const sdk = new KubiksSDK({
+  service: "my-explicit-service-name"
+});
+
+// 2. OTEL_SERVICE_NAME environment variable
+// export OTEL_SERVICE_NAME=my-service-from-env
+
+// 3. Default fallback
+// Will use "nextjs-app" if neither above are set
+```
+
 ### Migration from Previous Versions
 
 If you're currently using `getEnhancedHttpInstrumentations()`, you can simply replace it with `createUniversalHttpInstrumentation()` for better dual support:

@@ -13,11 +13,11 @@ export class ServiceDetector implements DetectorSync {
     serviceName?: string;
     attributes?: Attributes
     constructor(config?: ServiceDetectorConfig) {
-        this.serviceName = config?.serviceName || process.env.OTEL_SERVICE_NAME;
+        this.serviceName = config?.serviceName || process.env.OTEL_SERVICE_NAME || 'nextjs-app';
         this.attributes = config?.attributes instanceof Resource ? config.attributes.attributes : config?.attributes || {};
     }
     detect(_config?: ResourceDetectionConfig): Resource {
-        if (!this.serviceName || !this.attributes) {
+        if (!this.serviceName) {
             return Resource.empty();
         }
 

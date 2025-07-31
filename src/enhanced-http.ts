@@ -67,7 +67,7 @@ export function getEnhancedHttpInstrumentations(options: EnhancedHttpInstrumenta
 
     // Initialize console logging if enabled (default: true)
     if (options.enableConsoleLogging !== false) {
-        const serviceName = options.serviceName || 'nextjs-app';
+        const serviceName = options.serviceName || process.env.OTEL_SERVICE_NAME || 'nextjs-app';
         registerOTel(serviceName);
         patchConsole();
     }

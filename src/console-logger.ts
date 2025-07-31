@@ -134,7 +134,7 @@ const consoleToSeverityNumber = {
 } as const;
 
 // Global variables for OpenTelemetry components
-let serviceName = 'nextjs-app'; // Default service name
+let serviceName = process.env.OTEL_SERVICE_NAME || 'nextjs-app'; // Default service name from environment
 let provider: LoggerProvider;
 let logger: any;
 let tracer: any;
