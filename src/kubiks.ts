@@ -106,35 +106,36 @@ export class KubiksSDK {
         let exporter: OTLPTraceExporter | ConsoleSpanExporter | undefined = undefined;
 
         if (!this.options.kubiksKey) {
-            console.warn("No Kubiks API key provided. Traces will not be sent to Kubiks.")
+            console.warn("No Kubiks API key provided. Traces will be sent without authentication headers.")
         }
 
+        // Always create OTLP exporter, with or without API key
+        let collectorUrl = this.options.collectorUrl;
+        const tracesEndpoint = collectorUrl + "/v1/traces";
 
-        if (this.options.kubiksKey) {
-            let collectorUrl = this.options.collectorUrl;
+        exporter = new OTLPTraceExporter({
+            url: tracesEndpoint,
+            headers: this.options.kubiksKey ? {
+                "X-Kubiks-Key": this.options.kubiksKey || process.env.KUBIKS_KEY || process.env.KUBIKS_OTEL_KEY,
+            } : {},
+            timeoutMillis: 1000,
+        });
 
-            exporter = new OTLPTraceExporter({
-                url: collectorUrl + "/v1/traces",
-                headers: {
-                    "X-Kubiks-Key": this.options.kubiksKey || process.env.KUBIKS_KEY || process.env.KUBIKS_OTEL_KEY,
-                },
-                timeoutMillis: 1000,
-            });
-        }
+        console.log(`[KubiksSDK] Traces will be exported to: ${tracesEndpoint}`);
 
+        // Override with console exporter if log option is enabled
         if (this.options.log) {
             exporter = new ConsoleSpanExporter();
+            console.log("[KubiksSDK] Using console exporter for traces (log option enabled)");
         }
 
-        if (exporter) {
-            const spanProcessor = this.options.serverless ? new SimpleSpanProcessor(exporter) : new BatchSpanProcessor(exporter, {
-                maxQueueSize: 100,
-                maxExportBatchSize: 5,
-            });
+        // Always add span processor since we always have an exporter now
+        const spanProcessor = this.options.serverless ? new SimpleSpanProcessor(exporter) : new BatchSpanProcessor(exporter, {
+            maxQueueSize: 100,
+            maxExportBatchSize: 5,
+        });
 
-
-            provider.addSpanProcessor(spanProcessor);
-        }
+        provider.addSpanProcessor(spanProcessor);
 
         provider.register();
 
