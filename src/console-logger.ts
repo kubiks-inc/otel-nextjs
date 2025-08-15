@@ -137,9 +137,18 @@ const consoleToSeverityNumber = {
 let serviceName = process.env.OTEL_SERVICE_NAME || 'nextjs-app'; // Default service name from environment
 let provider: LoggerProvider;
 let logger: any;
-let tracer: any;
 let exporter: SimpleOTLPLogExporter;
 let globalResource: Resource; // Store the detected resource globally
+
+// Always resolve the tracer dynamically from the global provider to avoid caching a no-op tracer
+// This ensures manual spans are created with the currently registered tracer provider
+// even if initialization order varies.
+const tracer: any = new Proxy({}, {
+    get: (_target, prop: string) => {
+        const activeTracer: any = trace.getTracer(serviceName, getPackageVersion());
+        return activeTracer[prop as keyof typeof activeTracer];
+    }
+});
 
 // Initialize OpenTelemetry components
 function initializeOTel() {
@@ -175,7 +184,6 @@ function initializeOTel() {
     provider.addLogRecordProcessor(processor);
 
     logger = provider.getLogger('console-logger', getPackageVersion());
-    tracer = trace.getTracer(serviceName, getPackageVersion());
 }
 
 // Register OpenTelemetry with custom service name
@@ -349,7 +357,7 @@ export { provider as logProvider, tracer };
 
 // Helper function to manually start a trace
 export function startTrace(name: string = "manual-trace"): { traceId: string; spanId: string; endTrace: () => void } {
-    const span = tracer.startSpan(name, {
+    const span = trace.getTracer(serviceName, getPackageVersion()).startSpan(name, {
         kind: SpanKind.INTERNAL,
     });
 
@@ -367,7 +375,7 @@ export function startTrace(name: string = "manual-trace"): { traceId: string; sp
 
 // Helper function to run code within a trace context
 export function runInTrace<T>(name: string, fn: () => T): T {
-    const span = tracer.startSpan(name, {
+    const span = trace.getTracer(serviceName, getPackageVersion()).startSpan(name, {
         kind: SpanKind.INTERNAL,
     });
 
@@ -419,7 +427,7 @@ export function runInTrace<T>(name: string, fn: () => T): T {
 
 // Helper function to run async code within a trace context
 export async function runInTraceAsync<T>(name: string, fn: () => Promise<T>): Promise<T> {
-    const span = tracer.startSpan(name, {
+    const span = trace.getTracer(serviceName, getPackageVersion()).startSpan(name, {
         kind: SpanKind.INTERNAL,
     });
 
