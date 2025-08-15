@@ -1,5 +1,6 @@
 import { BatchSpanProcessor, NodeTracerProvider, SimpleSpanProcessor, Sampler, ConsoleSpanExporter } from '@opentelemetry/sdk-trace-node'
 import api, { Attributes, DiagConsoleLogger, DiagLogLevel } from "@opentelemetry/api";
+import { AsyncHooksContextManager } from '@opentelemetry/context-async-hooks';
 import { DetectorSync, detectResourcesSync, Resource, ResourceAttributes } from '@opentelemetry/resources';
 import { awsLambdaDetector } from '@opentelemetry/resource-detector-aws'
 import { VercelDetector } from './resources/vercel.ts';
@@ -73,7 +74,13 @@ export class KubiksSDK {
     options: KubiksSDKOpts;
     attributes: ResourceAttributes;
     constructor(options: KubiksSDKOpts = {}) {
-        options.serverless = options.serverless || false;
+        // Auto-detect serverless to ensure immediate export of spans
+        const detectedServerless =
+            !!process.env.AWS_LAMBDA_FUNCTION_NAME ||
+            !!process.env.AWS_EXECUTION_ENV ||
+            !!process.env.VERCEL;
+
+        options.serverless = options.serverless ?? detectedServerless;
         options.collectorUrl = options.collectorUrl || process.env.COLLECTOR_URL || "https://otlp.kubiks.ai";
         options.kubiksKey = options.kubiksKey || process.env.KUBIKS_API_KEY || process.env.KUBIKS_KEY;
         options.includeDefaultInstrumentations = options.includeDefaultInstrumentations !== false; // Default to true
@@ -86,23 +93,13 @@ export class KubiksSDK {
         if (process.env.OTEL_LOG_LEVEL === "debug") {
             api.diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.ALL);
         }
-        const provider = new NodeTracerProvider({
-            sampler: this.options.sampler,
-            resource: detectResourcesSync({
-                detectors: [
-                    awsLambdaDetector,
-                    new VercelDetector(),
-                    ...(this.options.resourceDetectors || []),
-                    new ServiceDetector({ serviceName: this.options.service, attributes: this.options.resourceAttributes })
-                ],
-            }),
-            forceFlushTimeoutMillis: 5000,
-        });
+        // If a tracer provider is already registered globally (e.g., by @vercel/otel),
+        // attach our exporter to it so manual spans created via @opentelemetry/api
+        // are exported to Kubiks as well.
+        const globalProvider: any = (api as any).trace?.getTracerProvider?.();
+        const existingDelegate: any = typeof globalProvider?.getDelegate === 'function' ? globalProvider.getDelegate() : undefined;
 
-
-
-        // configure exporters
-
+        // configure exporters (shared for both paths below)
         let exporter: OTLPTraceExporter | ConsoleSpanExporter | undefined = undefined;
 
         if (!this.options.kubiksKey) {
@@ -129,7 +126,41 @@ export class KubiksSDK {
             console.log("[KubiksSDK] Using console exporter for traces (log option enabled)");
         }
 
-        // Always add span processor since we always have an exporter now
+        if (existingDelegate && typeof existingDelegate.addSpanProcessor === 'function') {
+            // Attach to existing provider (e.g., @vercel/otel)
+            const spanProcessor = this.options.serverless ? new SimpleSpanProcessor(exporter) : new BatchSpanProcessor(exporter, {
+                maxQueueSize: 100,
+                maxExportBatchSize: 5,
+            });
+            existingDelegate.addSpanProcessor(spanProcessor);
+
+            // Register instrumentations regardless; they use the global provider
+            const allInstrumentations = [
+                ...(this.options.includeDefaultInstrumentations ? getDefaultInstrumentations(this.options) : []),
+                ...(this.options.instrumentations || [])
+            ];
+            registerInstrumentations({
+                instrumentations: allInstrumentations
+            });
+
+            console.log('[KubiksSDK] Attached Kubiks exporter to existing global tracer provider');
+            return existingDelegate;
+        }
+
+        const provider = new NodeTracerProvider({
+            sampler: this.options.sampler,
+            resource: detectResourcesSync({
+                detectors: [
+                    awsLambdaDetector,
+                    new VercelDetector(),
+                    ...(this.options.resourceDetectors || []),
+                    new ServiceDetector({ serviceName: this.options.service, attributes: this.options.resourceAttributes })
+                ],
+            }),
+            forceFlushTimeoutMillis: 5000,
+        });
+
+        // In serverless environments, use SimpleSpanProcessor to avoid buffer loss
         const spanProcessor = this.options.serverless ? new SimpleSpanProcessor(exporter) : new BatchSpanProcessor(exporter, {
             maxQueueSize: 100,
             maxExportBatchSize: 5,
@@ -137,7 +168,13 @@ export class KubiksSDK {
 
         provider.addSpanProcessor(spanProcessor);
 
-        provider.register();
+        // Ensure a proper async context manager is registered so manual spans and
+        // instrumentations propagate context across async boundaries.
+        // This is especially important outside of the full NodeSDK.
+        // Prefer AsyncLocalStorage-based context manager for better compatibility
+        // with React/Next.js server runtimes.
+        const contextManager = new AsyncHooksContextManager().enable();
+        provider.register({ contextManager });
 
         // Combine default instrumentations with user-provided ones
         const allInstrumentations = [
