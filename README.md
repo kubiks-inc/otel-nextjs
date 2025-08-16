@@ -14,11 +14,8 @@ export async function register() {
     const sdk = new KubiksSDK({
       serverless: true,
       service: "your-project-name",
-      // Automatically includes:
-      // - HTTP instrumentation for Node.js requests
-      // - Undici instrumentation for Next.js fetch with payload capture
-      // - Full request/response body and header capture (non-binary only)
-      // - Response body capture enabled by default
+      // Note: HTTP auto-instrumentation is disabled by default.
+      // You can still add instrumentations manually via the `instrumentations` option.
     });
 
     sdk.start();
@@ -28,16 +25,12 @@ export async function register() {
 
 ## Features
 
-### 🚀 **Automatic Next.js Support**
-- Traces both server-side requests (HTTP) and client-side fetch calls (Undici)
-- Zero configuration required for Next.js applications
+### 🚀 **Manual Next.js Support**
+- By default this SDK focuses on logs and manual spans.
+- Add HTTP or Undici instrumentations manually if desired (see below).
 
-### 📝 **Smart Payload Capture**
-- Automatically captures request/response bodies and headers
-- Skips binary content (images, videos, file uploads) to avoid large traces
-- Configurable size limits (default: 10KB)
-- Supports JSON, form data, and text content
-- **Full fetch response body capture** with optional interception
+### 📝 **Optional Payload Capture (manual)**
+- You can opt-in to request/response body and header capture by adding HTTP instrumentations manually.
 
 ### 🔧 **Flexible Configuration**
 - Works out-of-the-box with sensible defaults
@@ -62,7 +55,7 @@ export async function register() {
 }
 ```
 
-### Advanced Configuration
+### Add HTTP Instrumentation Manually (Optional)
 
 ```javascript
 export async function register() {
@@ -72,13 +65,13 @@ export async function register() {
     const sdk = new KubiksSDK({
       serverless: true,
       service: "your-project-name",
-      // Add custom instrumentations alongside defaults
+      // Add instrumentations explicitly
       instrumentations: [
         ...getEnhancedHttpInstrumentations({ 
           plugins: [
-            new StripePlugin() // Add custom plugins
+            new StripePlugin()
           ],
-          enableFetchBodyCapture: true, // Full body capture
+          enableFetchBodyCapture: true,
         }),
         // Add other instrumentations here
       ]
@@ -99,7 +92,7 @@ export async function register() {
     const sdk = new KubiksSDK({
       serverless: true,
       service: "your-project-name",
-      includeDefaultInstrumentations: false, // Disable defaults
+      includeDefaultInstrumentations: false, // Defaults to false in this version
       instrumentations: [
         // Provide your own instrumentations
         new BetterHttpInstrumentation()
@@ -111,7 +104,7 @@ export async function register() {
 }
 ```
 
-## Universal HTTP Instrumentation (Recommended)
+## Universal HTTP Instrumentation (Optional)
 
 For Next.js applications that need to work both locally (with `npm run dev`) and on Vercel, use the universal HTTP instrumentation that automatically detects the environment and enables both undici and fetch interceptors:
 
@@ -132,12 +125,10 @@ const sdk = new NodeSDK({
 sdk.start();
 ```
 
-This approach:
-- **Automatically detects** whether you're running locally or on Vercel
-- **Enables fetch interceptor** for local development (where Next.js uses regular fetch)
-- **Enables undici instrumentation** for Vercel deployment (where Vercel uses undici)
-- **Supports both simultaneously** for maximum compatibility
-- **Provides detailed logging** about which interceptors are enabled
+This approach, when added manually, can:
+- Enable fetch interceptor for local development
+- Enable undici instrumentation for Vercel deployment
+- Support both simultaneously for compatibility
 
 ### Environment Detection & Logging
 
@@ -188,7 +179,7 @@ const sdk = new KubiksSDK({
 
 ### Migration from Previous Versions
 
-If you're currently using `getEnhancedHttpInstrumentations()`, you can simply replace it with `createUniversalHttpInstrumentation()` for better dual support:
+If you're currently using `getEnhancedHttpInstrumentations()`, you can replace it with `createUniversalHttpInstrumentation()` for dual support:
 
 ```typescript
 // Before (still works, but may miss some requests)

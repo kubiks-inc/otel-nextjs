@@ -7,8 +7,7 @@ import { VercelDetector } from './resources/vercel.ts';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { InstrumentationOption, registerInstrumentations } from '@opentelemetry/instrumentation';
 import { ServiceDetector } from './resources/service.ts';
-import { getEnhancedHttpInstrumentations } from './enhanced-http.ts';
-import { VercelPlugin } from './http-plugins/vercel.ts';
+// Intentionally do not import HTTP/Undici instrumentations to keep this SDK focused on logs and manual spans
 
 type KubiksSDKOpts = {
     instrumentations?: InstrumentationOption[],
@@ -22,9 +21,10 @@ type KubiksSDKOpts = {
     resourceDetectors?: DetectorSync[],
     resourceAttributes?: Resource | Attributes
     /**
-     * Whether to include default instrumentations (HTTP, Undici, etc.)
-     * Set to false to use only custom instrumentations
-     * @default true
+     * Whether to include default instrumentations.
+     * Defaults to false to avoid auto-instrumenting HTTP/Undici.
+     * Provide your own instrumentations via options.instrumentations if desired.
+     * @default false
      */
     includeDefaultInstrumentations?: boolean
     /**
@@ -36,22 +36,12 @@ type KubiksSDKOpts = {
 }
 
 /**
- * Get default instrumentations that work well with Next.js and Node.js applications
+ * Default instrumentations are intentionally disabled to ensure the SDK does not
+ * auto-instrument HTTP or undici. Users may pass their own instrumentations via
+ * the `instrumentations` option when constructing the SDK.
  */
 function getDefaultInstrumentations(options: KubiksSDKOpts = {}): InstrumentationOption[] {
-    return [
-        // Enhanced HTTP instrumentation with undici support for Next.js fetch
-        ...getEnhancedHttpInstrumentations({
-            plugins: [
-                new VercelPlugin() // Automatically include Vercel plugin for common use case
-            ],
-            requireParentforOutgoingSpans: false,
-            captureBody: true, // Enable request/response body capture
-            captureHeaders: true, // Enable header capture
-            enableFetchBodyCapture: options.enableFetchBodyCapture !== false, // Enable full fetch body capture by default
-            serviceName: options.service, // Pass the service name from main SDK configuration
-        })
-    ];
+    return [];
 }
 
 /**
@@ -83,7 +73,8 @@ export class KubiksSDK {
         options.serverless = options.serverless ?? detectedServerless;
         options.collectorUrl = options.collectorUrl || process.env.COLLECTOR_URL || "https://otlp.kubiks.ai";
         options.kubiksKey = options.kubiksKey || process.env.KUBIKS_API_KEY || process.env.KUBIKS_KEY;
-        options.includeDefaultInstrumentations = options.includeDefaultInstrumentations !== false; // Default to true
+        // Default to false to avoid enabling HTTP/Undici instrumentation automatically
+        options.includeDefaultInstrumentations = options.includeDefaultInstrumentations === true ? true : false;
         options.enableFetchBodyCapture = options.enableFetchBodyCapture !== false; // Default to true
 
         this.options = options;
